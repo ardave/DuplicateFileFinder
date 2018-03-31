@@ -12,8 +12,22 @@ let hashes = Dictionary<string, FileInfo>()
 let mutable bytes = 0L
 let mutable fileCount = 0
 
+type Hash     = Hash     of string
+type FileName = FileName of string
+
 let getLength (fi:FileInfo) = fi.Length
-let getFullName (fi:FileInfo) = fi.FullName
+let getFullName (fi:FileInfo) = FileName fi.FullName
+
+let split resultSequence =
+    let oList, eList =
+        resultSequence
+        |> Seq.fold(fun (os, es) elem ->
+            match elem with
+            | Ok o -> o::os, es
+            | Error e -> os, e::es
+        ) ([],[])
+    let prepare lst = lst |> List.rev |> Seq.ofList
+    prepare oList, prepare eList
 
 let getHash (fileInfo:FileInfo) =
     let toStr hashArray =  BitConverter.ToString(hashArray).Replace("-", "").ToLowerInvariant()
@@ -21,18 +35,13 @@ let getHash (fileInfo:FileInfo) =
     File.OpenRead(fileInfo.FullName)
     |> md5.ComputeHash
     |> toStr
+    |> Hash
 
 let tryGetHash fileInfo =
     try
         getHash fileInfo |> Ok
     with
         | :? IOException as ex -> Error ex
-let sizeMatch (fi1:FileInfo) (fi2:FileInfo) =
-    let hash1 = fi1 |> getHash
-    let hash2 = fi2 |> getHash
-    if hash1 = hash2 then
-        let message = [|sprintf "Files \n\t%s\n\t%s\nare the same, with hashes %s and %s" fi1.FullName fi2.FullName hash1 hash2|]
-        File.AppendAllLines(dupesFile, message)
 
 let inline stringf format (x : ^a) = 
     (^a : (member ToString : string -> string) (x, format))
@@ -63,9 +72,13 @@ let main _ =
     |> printStatus2
     |> Seq.sortByDescending fst
     |> Seq.iter(fun (_, fis) ->
-        let hasheTuples = fis |> Seq.map(fun fi -> fi |> tryGetHash, fi)
+        let hashTuples = fis |> Seq.map(fun fi -> fi |> tryGetHash, fi)
+        
+        let okays, errors = hashTuples |> Seq.map fst |> split |> Seq.zip (hashTuples |> Seq.map snd)
+
+
         let dupes =
-            hasheTuples
+            hashTuples
             |> Seq.groupBy fst
             |> Seq.filter(fun gp -> gp |> snd |> Seq.length > 1)
 
