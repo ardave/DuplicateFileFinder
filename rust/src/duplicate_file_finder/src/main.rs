@@ -1,16 +1,22 @@
-use std::{collections::HashMap, env, fs::{File, OpenOptions}, io::{self, BufWriter, Read, Seek, SeekFrom, Write}, path::PathBuf};
 use anyhow::Result;
 use md5::Digest;
 use num_format::{Locale, ToFormattedString};
+use std::{
+    collections::HashMap,
+    env,
+    fs::{File, OpenOptions},
+    io::{self, BufWriter, Read, Seek, SeekFrom, Write},
+    path::PathBuf,
+};
 use walkdir::WalkDir;
 
-fn main()-> Result<()> {
+fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     println!("Args looks like: {:?}", args);
     match args.as_slice() {
-        [current_path ] => search_path_for_dupes(&current_path)?,
+        [current_path] => search_path_for_dupes(current_path)?,
         [_current, explicitly_requested] => search_path_for_dupes(explicitly_requested)?,
-        _ => println!("You must include the folder path to scan.")
+        _ => println!("You must include the folder path to scan."),
     }
 
     Ok(())
@@ -26,13 +32,13 @@ fn get_file_hashes(flattened: Vec<(u64, PathBuf)>) -> Result<HashMap<(Digest, u6
                 if let Some(path_bufs) = by_hash.get_mut(&(digest, file_size)) {
                     path_bufs.push(path_buf);
                 } else {
-                    by_hash.insert((digest,file_size), vec![path_buf]);
+                    by_hash.insert((digest, file_size), vec![path_buf]);
                 }
                 let hashed_count = by_hash.values().map(|v| v.len()).sum::<usize>();
                 if hashed_count % 100 == 0 {
                     println!("{} files hashed.", hashed_count.format_number());
                 }
-            },
+            }
             Err(e) => println!("Hash file bytes error: {}", e),
         }
     }
@@ -43,34 +49,44 @@ fn get_file_hashes(flattened: Vec<(u64, PathBuf)>) -> Result<HashMap<(Digest, u6
 fn search_path_for_dupes(path: &str) -> Result<()> {
     let mut by_size = get_files_in_path_grouped_by_size(path)?;
 
-    println!("Examined {} files.", by_size.values().map(|v| v.len()).sum::<usize>().format_number());
+    println!(
+        "Examined {} files.",
+        by_size
+            .values()
+            .map(|v| v.len())
+            .sum::<usize>()
+            .format_number()
+    );
     by_size.retain(|_, value| value.len() > 1);
-    println!("Duplicates by size: {}", by_size.values().map(|v| v.len()).sum::<usize>().format_number());
+    println!(
+        "Duplicates by size: {}",
+        by_size
+            .values()
+            .map(|v| v.len())
+            .sum::<usize>()
+            .format_number()
+    );
 
-    let flattened: Vec<(u64, PathBuf)> = by_size
-        .into_values()
-        .flat_map(|v| v)
-        .collect();
+    let flattened: Vec<(u64, PathBuf)> = by_size.into_values().flatten().collect();
 
     let mut by_hash = get_file_hashes(flattened)?;
 
     by_hash.retain(|_, value| value.len() > 1);
-    
+
     // Convert HashMap into a Vec of key-value pairs
     let mut by_hash: Vec<_> = by_hash.into_iter().collect();
 
     // Sort the Vec by key/file_size in descending order
-    by_hash.sort_by(|a, b| b.0.1.cmp(&a.0.1));
+    by_hash.sort_by(|a, b| b.0 .1.cmp(&a.0 .1));
 
-    print_output_to_file(by_hash)  
-
+    print_output_to_file(by_hash)
 }
 
 fn print_output_to_file(by_hash: Vec<((Digest, u64), Vec<PathBuf>)>) -> Result<()> {
     let file = OpenOptions::new()
-        .write(true)       // Open for writing
-        .create(true)      // Create the file if it doesn't exist
-        .truncate(true)    // Overwrite the file if it exists
+        .write(true) // Open for writing
+        .create(true) // Create the file if it doesn't exist
+        .truncate(true) // Overwrite the file if it exists
         .open("dupes.txt")?;
 
     let mut writer = BufWriter::new(file);
@@ -113,8 +129,8 @@ fn get_files_in_path_grouped_by_size(path: &str) -> Result<HashMap<u64, Vec<(u64
                         }
                     }
                 }
-            },
-            Err(e) => println!("WalkDir Error: {}", e)
+            }
+            Err(e) => println!("WalkDir Error: {}", e),
         }
     }
     Ok(by_size)
@@ -154,8 +170,6 @@ fn load_first_and_last_1024_bytes(path_buf: &PathBuf) -> io::Result<Vec<u8>> {
     }
 }
 
-
-
 trait FormatNumber {
     fn format_number(&self) -> String;
 }
@@ -171,4 +185,3 @@ impl FormatNumber for u64 {
         self.to_formatted_string(&Locale::en)
     }
 }
-
